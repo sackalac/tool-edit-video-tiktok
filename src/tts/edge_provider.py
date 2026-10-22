@@ -22,26 +22,22 @@ class EdgeTTSProvider(BaseTTSProvider):
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
                     f.write(chunk["data"])
-                elif chunk["type"] == "WordBoundary":
-                    sub_maker.create_sub((chunk["offset"], chunk["duration"]), chunk["text"])
+                elif chunk["type"] in ("WordBoundary", "SentenceBoundary"):
+                    sub_maker.feed(chunk)
 
-        # Chuyển đổi timestamp từ SubMaker sang format chuẩn
+        # Chuyển đổi timestamp từ SubMaker cues sang format chuẩn
         timestamps: List[Dict[str, Any]] = []
-        for (offset, duration), word in zip(sub_maker.offset, [s[2] for s in sub_maker.subs] if hasattr(sub_maker, 'subs') else []):
-            start_sec = offset / 10_000_000
-            dur_sec = duration / 10_000_000
+        for cue in sub_maker.cues:
             timestamps.append({
-                "word": word,
-                "start": start_sec,
-                "end": start_sec + dur_sec
+                "word": cue.content,
+                "start": cue.start.total_seconds(),
+                "end": cue.end.total_seconds()
             })
 
-        # Tính toán duration ước tính
         duration = 0.0
         if timestamps:
             duration = timestamps[-1]["end"]
         else:
-            # Fallback nếu không có subs
             duration = max(1.0, len(text.split()) * 0.3)
 
         return TTSResult(
