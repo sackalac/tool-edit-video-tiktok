@@ -1,0 +1,21 @@
+# Core & Config
+pydantic>=2.7.0
+pydantic-settings>=2.2.0
+python-dotenv>=1.0.1
+requests>=2.31.0
+
+# TTS Providers
+edge-tts>=6.1.12
+google-genai>=0.1.1
+elevenlabs>=1.0.0
+
+# Audio & Subtitle Alignment
+faster-whisper>=1.0.0
+
+# Media & Automation
+ffmpeg-python>=0.2.0
+pywinauto>=0.6.8
+
+# Testing & Dev
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
