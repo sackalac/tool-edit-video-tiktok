@@ -1,0 +1,73 @@
+Kiến trúc Tổng thể Hệ thống Auto-Edit Video TikTok (Local Pipeline)
+Hệ thống được thiết kế tinh gọn để tự động hóa 100% khâu sản xuất video từ kịch bản thô thành file video MP4 hoàn chỉnh (khâu upload lên TikTok sẽ do người dùng chủ động đăng bằng tay để tránh bot-detection/shadowban).
+
+Tận dụng tối đa sức mạnh phần cứng NVIDIA RTX 3060 cục bộ và kỹ thuật "JSON Hacking" vào file dự án CapCut để giữ nguyên hiệu ứng, animation chữ nhảy karaoke đẹp mắt mà không cần render thủ công.
+
+---
+
+1. Tech Stack đề xuất (Tinh gọn)
+- Ngôn ngữ chính: Python 3.10+ (Đồng nhất toàn bộ hệ thống từ điều phối, xử lý media, can thiệp file đến export).
+- API / Điều phối: FastAPI (hoặc chạy CLI / UI Desktop đơn giản như PyQt6 / Web UI Streamlit).
+- Cơ sở dữ liệu: SQLite (nhẹ, không cần cài đặt service, lưu trữ kịch bản, lịch sử render và đường dẫn video).
+- Hardware Acceleration: NVIDIA RTX 3060 (CUDA) hỗ trợ FFmpeg qua `h264_nvenc` và tăng tốc xử lý AI (`faster-whisper`).
+
+---
+
+2. Giai đoạn 1: Chuẩn bị & Setup Template CapCut gốc
+Mục tiêu: Tạo sẵn "bộ khung" hiệu ứng hoàn hảo trên CapCut PC.
+
+- Tạo Template mẫu: Mở CapCut PC, tạo dự án chuẩn dọc 9:16.
+  + Thêm một track nhạc nền (đã chỉnh volume, fade in/out).
+  + Thêm video stock mẫu.
+  + Thêm text phụ đề mẫu đã chọn sẵn font chữ đẹp, màu sắc, viền, shadow và animation nhảy chữ (karaoke/bounce).
+  + Thêm các transition, filter hoặc sticker cố định.
+- Phân tích cấu trúc file: Đóng CapCut, mở thư mục dự án CapCut tìm file `draft_content.json` (hoặc `draft_info.json` tùy phiên bản).
+- Khóa cố định phiên bản CapCut PC (tắt auto-update) để cấu trúc JSON không bị thay đổi bất ngờ.
+
+---
+
+3. Giai đoạn 2: Data Pipeline (Worker xử lý bằng Python)
+Module chuẩn bị toàn bộ "nguyên liệu" thô khớp chính xác theo kịch bản:
+
+- Voice Generation (TTS Đa Nền Tảng - Multi-Provider):
+  Hệ thống thiết kế theo dạng Adapter Pattern linh hoạt, cho phép chọn 1 trong 3 nguồn giọng đọc tùy theo nhu cầu từng video:
+  + Provider 1 - `edge-tts`: Miễn phí 100%, không cần API key, giọng đọc tiếng Việt rất tự nhiên (`vi-VN-HoaiMyNeural`, `vi-VN-NamMinhNeural`), có sẵn timestamp từng từ.
+  + Provider 2 - `gemini` (Gemini 2.0 Flash Audio): Tùy biến cảm xúc linh hoạt qua prompt (hồi hộp, kịch tính, thì thầm), kết hợp vừa viết kịch bản vừa đọc.
+  + Provider 3 - `elevenlabs`: Đỉnh cao giọng đọc điện ảnh/kể chuyện, hỗ trợ Voice Cloning (sao chép giọng bạn hoặc giọng hot TikToker), đa dạng ngữ điệu tự nhiên số 1 hiện nay (`eleven_multilingual_v2`).
+
+- Subtitle & Word-Level Timestamping:
+  + Nếu dùng `edge-tts`: Lấy trực tiếp word-boundaries từ luồng sinh audio.
+  + Nếu dùng `gemini` hoặc `elevenlabs`: Tự động nạp file audio xuất ra vào `faster-whisper` (chạy trên GPU RTX 3060 qua CUDA) để trích xuất mảng timestamp từng từ trong 1-2 giây: `[{"word": "Chào", "start": 0.0, "end": 0.25}, ...]`.
+  + File audio lưu vào `assets/audio/`, timestamp lưu dưới dạng JSON chuẩn.
+
+- Media Fetching & Preprocessing:
+  + Hỗ trợ 2 chế độ:
+    * Mode Tự động: Tự động gọi Pexels/Pixabay API tải video stock chuẩn dọc 9:16 theo từ khóa kịch bản.
+    * Mode Thủ công: Bốc ngẫu nhiên hoặc chỉ định từ kho video/ảnh có sẵn trong `assets/video/`.
+  + Dùng FFmpeg với encoder `h264_nvenc` để cắt ghép (trim, scale, loop) thô sao cho tổng thời lượng hình nền khớp chính xác với độ dài voiceover.
+
+---
+
+4. Giai đoạn 3: Trình tạo Video (JSON Hacking vào CapCut Draft)
+Ghép nguyên liệu mới vào template cũ:
+
+- Tạo Project Clone: Tạo thư mục dự án mới trong thư mục lưu draft của CapCut (ví dụ: `tiktok_proj_101`).
+- Inject Dữ liệu vào file draft:
+  + Lưu ý đơn vị thời gian của CapCut: tính bằng microsecond (1s = 1.000.000us).
+  + Cập nhật tổng thời lượng (`duration`) của toàn bộ timeline theo độ dài audio voiceover.
+  + Thay thế đường dẫn file audio gốc thành file voiceover mới sinh.
+  + Sinh mới các ID (UUID) cho từng từ/cụm từ theo mảng timestamp từ bước TTS, inject vào mảng `materials.texts` và ánh xạ đúng vào `tracks` chứa animation karaoke.
+  + Thay thế đường dẫn file video nền.
+- Lưu file draft: Ghi đè file `draft_content.json`. Lúc này dự án CapCut đã sẵn sàng 100% với nội dung mới và đầy đủ hiệu ứng của template mẫu.
+
+---
+
+5. Giai đoạn 4: Tự động hóa Export & Xuất thành phẩm
+- Auto-Export:
+  + Dùng `pywinauto` (dựa trên Win32/UIA handle để đảm bảo độ chính xác cao hơn `pyautogui` dạng tọa độ chuột) mở CapCut project và trigger lệnh Export (Ctrl + E).
+  + Đặt tên file xuất theo mã video (ví dụ: `VID_101.mp4`) và bấm nút Export.
+  + Monitor tiến trình export: Lắng nghe thư mục `output/` cho đến khi file `.mp4` hoàn tất ghi và dung lượng ổn định.
+- Hoàn tất & Sẵn sàng đăng:
+  + Cập nhật trạng thái video sang `COMPLETED` trong database SQLite.
+  + Tạo kèm 1 file text metadata `VID_101_info.txt` chứa: Tiêu đề video, Caption gợi ý, Hashtag phù hợp (sinh tự động qua AI).
+  + (Tùy chọn): Gửi thông báo "Video đã sẵn sàng!" qua Desktop Notification hoặc Telegram Bot để người dùng kéo thả đăng lên TikTok.

@@ -1,0 +1,45 @@
+# Superpowers scratch
+.superpowers/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local Environment & Secrets
+.env
+*.env
+
+# Media & Outputs
+assets/audio/*
+!assets/audio/.gitkeep
+assets/video/*
+!assets/video/.gitkeep
+output/*
+!output/.gitkeep
+temp/*
